@@ -88,6 +88,14 @@ def cityscapes_classes():
         'bicycle'
     ]
 
+def fashionpedia_classes():
+    return [
+        'shirt, blouse', 'top, t-shirt, sweatshirt', 'sweater', 'cardigan',
+        'jacket', 'vest', 'pants', 'shorts', 'skirt', 'coat', 'dress', 
+        'jumpsuit', 'cape'
+    ]
+
+
 
 dataset_aliases = {
     'voc': ['voc', 'pascal_voc', 'voc07', 'voc12'],
@@ -95,7 +103,8 @@ dataset_aliases = {
     'imagenet_vid': ['vid', 'imagenet_vid', 'ilsvrc_vid'],
     'coco': ['coco', 'mscoco', 'ms_coco'],
     'wider_face': ['WIDERFaceDataset', 'wider_face', 'WDIERFace'],
-    'cityscapes': ['cityscapes']
+    'cityscapes': ['cityscapes'],
+    'fashionpedia':['fashionpedia']
 }
 
 

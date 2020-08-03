@@ -17,7 +17,7 @@ model = dict(
         num_outs=5),
     bbox_head=dict(
         type='SOLOV2Head',
-        num_classes=81,
+        num_classes=2,
         in_channels=256,
         stacked_convs=4,
         seg_feat_channels=256,
@@ -50,15 +50,18 @@ test_cfg = dict(
     max_per_img=100)
 # dataset settings
 dataset_type = 'CocoDataset'
-data_root = '/hexiao/dataset/DeepFashion2/'
+data_root = '/hexiao/dataset/COCO2017/'
+data_root_val = '/hexiao/dataset/20200622/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
     dict(type='Resize',
-         img_scale=[(1333, 800), (1333, 768), (1333, 736),
-                    (1333, 704), (1333, 672), (1333, 640)],
+         #img_scale=[(1333, 800), (1333, 768), (1333, 736),
+         #           (1333, 704), (1333, 672), (1333, 640)],
+         img_scale=[(640, 400), (640, 334), (640, 368),
+                    (640, 352), (640, 336), (640, 320)],
          multiscale_mode='value',
          keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
@@ -71,11 +74,11 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1333, 800),
+        img_scale=(640, 400),
         flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
-            dict(type='RandomFlip'),
+            #dict(type='RandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
             dict(type='ImageToTensor', keys=['img']),
@@ -83,25 +86,25 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
+    imgs_per_gpu=4,
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/deepfashion2_train_100.coco.json',
-        img_prefix=data_root + 'train/image',
+        ann_file=data_root + 'annotations/instances_train2017_person.json',
+        img_prefix=data_root + 'train2017',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/deepfashion2_train_1w.coco.json',
-        img_prefix=data_root + 'validation/image',
+        ann_file=data_root + 'annotations/instances_val2017_person.json',
+        img_prefix=data_root + 'val2017',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/deepfashion2_train_1w.coco.json',
-        img_prefix=data_root + 'validation/image',
+        ann_file=data_root_val + 'annotations/val.json',
+        img_prefix=data_root_val + 'images/val',
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -109,7 +112,7 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[27, 33])
+    step=[13, 15])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -120,11 +123,11 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-total_epochs = 36
+total_epochs = 18
 device_ids = [0]
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/solo_r101_3x'
+work_dir = './work_dirs/solo_r101_3x_coco_person'
 load_from = None
-resume_from = None
+resume_from = './work_dirs/solo_r101_3x_coco_person/epoch_3.pth'
 workflow = [('train', 1)]

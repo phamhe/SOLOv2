@@ -17,7 +17,7 @@ model = dict(
         num_outs=5),
     bbox_head=dict(
         type='SOLOV2Head',
-        num_classes=81,
+        num_classes=14,
         in_channels=256,
         stacked_convs=4,
         seg_feat_channels=256,
@@ -57,11 +57,11 @@ train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
     dict(type='Resize',
-         img_scale=[(1333, 800), (1333, 768), (1333, 736),
-                    (1333, 704), (1333, 672), (1333, 640)],
+         img_scale=[(960, 640)],
          multiscale_mode='value',
          keep_ratio=True),
-    dict(type='RandomFlip', flip_ratio=0.5),
+    #dict(type='RandomFlip', flip_ratio=0.5),
+    dict(type='RandomFlip', flip_ratio=0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
@@ -71,11 +71,11 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1333, 800),
+        img_scale=(960, 640),
         flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
-            dict(type='RandomFlip'),
+            #dict(type='RandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
             dict(type='ImageToTensor', keys=['img']),
@@ -83,7 +83,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
+    imgs_per_gpu=2,
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
@@ -92,24 +92,24 @@ data = dict(
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/deepfashion2_train_1w.coco.json',
-        img_prefix=data_root + 'validation/image',
+        ann_file=data_root + 'annotations/deepfashion2_train_100.coco.json',
+        img_prefix=data_root + 'train/image',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/deepfashion2_train_1w.coco.json',
-        img_prefix=data_root + 'validation/image',
+        ann_file=data_root + 'annotations/deepfashion2_train_100.coco.json',
+        img_prefix=data_root + 'train/image',
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
     policy='step',
     warmup='linear',
-    warmup_iters=500,
+    warmup_iters=1,
     warmup_ratio=1.0 / 3,
-    step=[27, 33])
+    step=[15, 15])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -120,11 +120,11 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-total_epochs = 36
+total_epochs = 30
 device_ids = [0]
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/solo_r101_3x'
+work_dir = './work_dirs/solo_test'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
