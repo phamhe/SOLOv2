@@ -4,3 +4,4 @@ build
 *.so
 mmdet.egg-info
 work_dirs
+dist

@@ -50,7 +50,7 @@ test_cfg = dict(
     max_per_img=100)
 # dataset settings
 dataset_type = 'FashionPediaDataset'
-data_root = '/hexiao/dataset/DF2_FP/'
+data_root = '/hexiao/dataset/Fashionpedia/'
 data_root_val = '/hexiao/dataset/20200622/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -58,10 +58,13 @@ train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
     dict(type='Resize',
-         img_scale=[(512, 1024), (544, 1024), (576, 1024),
-                    (608, 1024), (640, 1024), (672, 1024)],
+         img_scale=[(416, 858), (448, 890), (480, 928),
+                    (512, 960), (544, 992), (576, 1024)],
          multiscale_mode='value',
-         keep_ratio=True),
+         keep_ratio=False),
+    dict(type='CropCloth',
+        trans=[-2.0, 2.0],
+        show=False),
     dict(type='RandomFlip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -75,6 +78,7 @@ test_pipeline = [
         img_scale=(512, 960),
         flip=False,
         transforms=[
+            #dict(type='Resize', keep_ratio=True),
             dict(type='Resize', keep_ratio=False),
             dict(type='RandomFlip', flip_ratio=0),
             dict(type='Normalize', **img_norm_cfg),
@@ -89,8 +93,8 @@ data = dict(
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/train.json',
-        img_prefix=data_root + 'images',
+        ann_file=data_root + 'instances_attributes_train2020_clean_v3.json',
+        img_prefix=data_root + 'train',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
@@ -111,7 +115,7 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[13, 19])
+    step=[13, 15])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -122,11 +126,11 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-total_epochs = 24
+total_epochs = 18
 device_ids = [0]
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/solo_r101_3x_df2_fpv1'
-load_from = None
-resume_from = './work_dirs/solo_r101_3x_df2_fpv1/epoch_14.pth'
+work_dir = './work_dirs/solo_r101_3x_fpv1_ag03_rz'
+load_from = None#'./work_dirs/solo_r101_3x_fpv1_ag03_rz/epoch_6.pth'
+resume_from = './work_dirs/solo_r101_3x_fpv1_ag03_rz/epoch_1.pth'
 workflow = [('train', 1)]

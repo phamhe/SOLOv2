@@ -189,195 +189,6 @@ class Resize(object):
         return repr_str
 
 @PIPELINES.register_module
-class Crop(object):
-    """Crop images & bbox & mask.
-
-    This transform crops the input image to some scale which around a gt bbox. Bboxes and masks are
-    then resized with the same scale factor.
-
-    Args:
-    """
-
-    def __init__(self,
-                 scale=[0.6, 1.2],
-                 trans=[0, 1],
-                 prob=0.5,
-                 ratio_thr=0.1,
-                 show=False,
-                 show_iter=1000):
-
-        self.scale = scale
-        self.trans = trans 
-        self.prob = prob 
-        self.ratio_thr = ratio_thr
-        self.iter = 0
-        self.show = show
-        self.show_iter = show_iter
-
-    def _get_resize_info(self, results):
-        selected_mask = None
-        selected_idx = -1
-        img = results['img']
-
-        for key in results.get('mask_fields', []):
-            if results[key] is None:
-                continue
-
-            max_count = 0
-            for idx, mask in enumerate(results[key]):
-                if np.sum(mask) > max_count:
-                    max_count = np.sum(mask)
-                    selected_mask = mask 
-                    selected_idx = idx 
-            selected_bbox = results['gt_bboxes'][selected_idx]
-
-            mask_area = np.sum(selected_mask)
-            img_area = results['img_shape'][0]*results['img_shape'][1]
-            mask_ratio = mask_area / img_area
-
-            crop_flag = random.uniform(0, 1)
-            crop_flag = crop_flag > self.prob
-            if len(results['gt_bboxes']) > 1:
-                crop_flag = crop_flag and (mask_ratio > self.ratio_thr)
-            else:
-                crop_flag = crop_flag and (mask_ratio > self.ratio_thr/2)
-
-            if crop_flag :
-                # crop information.
-                dst_scale = random.uniform(self.scale[0], self.scale[1])
-                dst_offset = random.uniform(self.trans[0], self.trans[1])
-
-                x0, y0, x1, y1 = selected_bbox
-                src_center_x = (x0 + x1)/2
-                src_center_y = (y0 + y1)/2
-
-                dst_height = img.shape[1]*dst_scale
-                dst_center_y = img.shape[0]/2*dst_offset
-                dst_center_x = img.shape[1]/2*dst_offset 
-
-                scale_y = dst_height/(y1 - y0)
-                dst_width = (x1 - x0)*scale_y
-
-                affine_matrix = np.float32([
-                    [scale_y, 0, dst_center_x - scale_y*src_center_x],
-                    [0, scale_y, dst_center_y - scale_y*src_center_y]
-                ])
-            else:
-                affine_matrix = np.float32([
-                    [1.0, 0, 0],
-                    [0, 1.0, 0]
-                ])
-                selected_idx = -1
-            
-        return selected_idx, affine_matrix
-
-    def _resize_img(self, results, matrix):
-        img = cv2.warpAffine(results['img'], matrix, 
-                            (results['img_shape'][1], results['img_shape'][0]),
-                            borderValue=(123.675, 116.28, 103.53))
-        results['img'] = img
-        results['img_shape'] = img.shape
-        results['pad_shape'] = img.shape  # in case that there is no padding
-
-    def _resize_bboxes(self, results, matrix):
-        img_shape = results['img_shape']
-        for key in results.get('bbox_fields', []):
-            bboxes = results[key]
-            bboxes_final = []
-            del_idxs = []
-            for idx, bbox in enumerate(bboxes):
-                bbox[0::2] = bbox[0::2]*matrix[0][0] + matrix[0][2]
-                bbox[1::2] = bbox[1::2]*matrix[1][1] + matrix[1][2]
-                bbox[0::2] = np.clip(bbox[0::2], 0, img_shape[1] - 1)
-                bbox[1::2] = np.clip(bbox[1::2], 0, img_shape[0] - 1)
-                if bbox[2] - bbox[0] < 1 or \
-                        bbox[3] - bbox[1] < 1:
-                    del_idxs.append(idx)
-                else:
-                    bboxes_final.append(bbox)
-            results[key] = np.array(bboxes_final)
-        return del_idxs
-
-    def _resize_masks(self, results, matrix, del_idxs):
-        results['masks_ratio'] = []
-        for key in results.get('mask_fields', []):
-
-            if results[key] is None:
-                continue
-            masks = []
-            for idx, mask in enumerate(results[key]):
-                if idx in del_idxs:
-                    continue
-                else:
-
-                    # tmp
-                    mask_area = np.sum(mask)
-                    img_area = results['img_shape'][0]*results['img_shape'][1]
-                    mask_ratio = mask_area / img_area
-                    results['masks_ratio'].append(mask_ratio)
-
-                    mask = cv2.warpAffine(mask, matrix, 
-                                         (results['img_shape'][1], results['img_shape'][0]),
-                                         flags=cv2.INTER_NEAREST,
-                                         borderValue=(0, 0, 0))
-                    masks.append(mask)
-            results[key] = np.stack(masks)
-
-    def _resize_seg(self, results, matrix):
-        for key in results.get('seg_fields', []):
-            gt_seg = cv2.warpAffine(results[key], matrix, 
-                                   (results['img_shape'][1], results['img_shape'][0]),
-                                   flags=cv2.INTER_NEAREST,
-                                   borderValue=(0, 0, 0))
-            results['gt_semantic_seg'] = gt_seg
-
-    def _show(self, results):
-        img = copy.deepcopy(results['img'])
-        text_ptr = 1
-        for key in results['bbox_fields']:
-            for bbox in results[key]:
-                cv2.rectangle(img, (int(bbox[0]), int(bbox[1])),
-                                   (int(bbox[2]), int(bbox[3])),
-                                   (0, 255, 0), 1)
-            cv2.putText(img, 
-                        '%s : %s'%(key, len(results[key])), 
-                        (40, 40*text_ptr),
-                        cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255))
-            text_ptr += 1
-        for key in results['mask_fields']:
-            for mask in results[key]:
-
-                mask = (mask > 0.5).astype(np.uint8)
-                mask = mask.astype(np.bool)
-                color_mask = np.random.randint(
-                    0, 256, (1, 3), dtype=np.uint8)
-                img[mask]  = img[mask] * 0.5 + color_mask * 0.5
-            cv2.putText(img, 
-                        '%s : %s'%(key, len(results[key])), 
-                        (40, 40*text_ptr),
-                        cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255))
-            text_ptr += 1
-        for ratio in results['masks_ratio']:
-            cv2.putText(img, 
-                        '%s'%ratio, 
-                        (40, 40*text_ptr),
-                        cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255))
-            text_ptr += 1
-
-        cv2.imwrite('/hexiao/dataset/cache_dir/%s.jpg'%(self.iter), img)
-
-    def __call__(self, results):
-        se_idx, matrix = self._get_resize_info(results)
-        self._resize_img(results, matrix)
-        del_idxs = self._resize_bboxes(results, matrix)
-        self._resize_masks(results, matrix, del_idxs)
-        self._resize_seg(results, matrix)
-        if self.show and self.iter % self.show_iter == 0:
-            self._show(results)
-        self.iter += 1
-        return results 
-
-@PIPELINES.register_module
 class CropCloth(object):
     """Crop images & bbox & mask.
 
@@ -392,6 +203,7 @@ class CropCloth(object):
                  trans=[-1, 1],
                  prob=0.2,
                  ratio_thr=[0.05, 0.2],
+                 angle=[-10, 10],
                  show=False,
                  show_iter=10):
 
@@ -402,6 +214,7 @@ class CropCloth(object):
         self.iter = 0
         self.show = show
         self.show_iter = show_iter
+        self.angle = angle
 
     def _get_resize_info(self, results):
         selected_mask = None
@@ -433,10 +246,6 @@ class CropCloth(object):
 
             crop_flag = random.uniform(0, 1)
             crop_flag = crop_flag > self.prob
-            #if len(results['gt_bboxes']) > 1:
-            #    crop_flag = crop_flag and ( self.ratio_thr[0] < mask_ratio ) and ( mask_ratio < self.ratio_thr[1] )
-            #else:
-            #    crop_flag = crop_flag and (mask_ratio > self.ratio_thr/2)
             crop_flag = crop_flag and ( self.ratio_thr[0] < mask_ratio ) and ( mask_ratio < self.ratio_thr[1] )
 
             if crop_flag :
@@ -471,8 +280,19 @@ class CropCloth(object):
                     [0, 1.0, 0]
                 ])
                 selected_idx = -1
+
+            # rotation
+            angle = random.uniform(self.angle[0], self.angle[1])
+            center = (img.shape[1]/2, img.shape[0]/2)
+            scale = 1
+            rotation_matrix = cv2.getRotationMatrix2D(center, angle, scale)
+
+            affine_matrix = np.concatenate((affine_matrix, np.array([0, 0, 1]).reshape(1, 3)), axis=0)
+            rotation_matrix = np.concatenate((rotation_matrix, np.array([0, 0, 1]).reshape(1, 3)), axis=0)
+            final_matrix = rotation_matrix.dot(affine_matrix)
+            #print(affine_matrix, angle, rotation_matrix, final_matrix, final_matrix.shape)
             
-        return selected_idx, affine_matrix
+        return selected_idx, final_matrix[0:2, :]
 
     def _resize_img(self, results, matrix):
         img = cv2.warpAffine(results['img'], matrix, 
@@ -489,26 +309,24 @@ class CropCloth(object):
             bboxes_final = []
             del_idxs = []
             for idx, bbox in enumerate(bboxes):
-                bbox[0::2] = bbox[0::2]*matrix[0][0] + matrix[0][2]
-                bbox[1::2] = bbox[1::2]*matrix[1][1] + matrix[1][2]
+                bbox_matrix = np.array([[bbox[0], bbox[0], bbox[2], bbox[2]],
+                                        [bbox[1], bbox[3], bbox[1], bbox[3]],
+                                        [1, 1, 1, 1]]).astype(np.float32)
+                bbox_matrix = matrix.dot(bbox_matrix)
+                bbox[0] = bbox_matrix[0, :].min()
+                bbox[1] = bbox_matrix[1, :].min()
+                bbox[2] = bbox_matrix[0, :].max()
+                bbox[3] = bbox_matrix[1, :].max()
+
                 bbox[0::2] = np.clip(bbox[0::2], 0, img_shape[1] - 1)
                 bbox[1::2] = np.clip(bbox[1::2], 0, img_shape[0] - 1)
+
                 #if bbox[2] - bbox[0] < 1 or \
                 #        bbox[3] - bbox[1] < 1:
                 #    del_idxs.append(idx)
                 #else:
                 #    bboxes_final.append(bbox)
                 bboxes_final.append(bbox)
-            results[key] = np.array(bboxes_final)
-        return del_idxs
-
-    def _resize_masks(self, results, matrix, del_idxs):
-        results['masks_ratio'] = []
-        for key in results.get('mask_fields', []):
-
-            if results[key] is None:
-                continue
-            masks = []
             results[key] = np.array(bboxes_final)
         return del_idxs
 
@@ -587,6 +405,15 @@ class CropCloth(object):
         del_idxs = self._resize_bboxes(results, matrix)
         self._resize_masks(results, matrix, del_idxs)
         self._resize_seg(results, matrix)
+
+        if 'gt_bboxes' in results:
+            gt_bboxes = results['gt_bboxes']
+            valid_inds = (gt_bboxes[:, 2] > gt_bboxes[:, 0]) & (
+                gt_bboxes[:, 3] > gt_bboxes[:, 1])
+            # if no gt bbox remains after cropping, just skip this image
+            if not np.any(valid_inds):
+                return None
+
         if self.show and self.iter % self.show_iter == 0:
             self._show(results)
         self.iter += 1
